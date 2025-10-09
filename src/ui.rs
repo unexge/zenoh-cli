@@ -28,7 +28,7 @@ pub async fn start(commands: mpsc::Sender<Command>) -> Result<()> {
     Ok(())
 }
 
-async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<()> {
+pub async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<()> {
     let mut input = input.trim().split(" ");
     match input.next().unwrap_or_default() {
         "q" | "quit" => bail!(Exit),

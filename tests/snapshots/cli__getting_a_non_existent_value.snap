@@ -1,0 +1,14 @@
+---
+source: tests/cli.rs
+info:
+  program: zenoh-cli
+  args:
+    - get
+    - foo
+---
+success: true
+exit_code: 0
+----- stdout -----
+foo: bar
+
+----- stderr -----
