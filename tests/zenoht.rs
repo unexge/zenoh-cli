@@ -1,44 +1,60 @@
-use std::time::Duration;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use tokio;
-use zenoh;
+use tokio::sync::Mutex;
+use zenoh::bytes::ZBytes;
+
+pub type KeyExpr = String;
 
 pub struct Session {
-    _runtime: tokio::runtime::Runtime,
-    _session: zenoh::Session,
+    runtime: tokio::runtime::Runtime,
+    session: Arc<zenoh::Session>,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.runtime
+            .block_on(async { self.session.close().await })
+            .unwrap();
+    }
 }
 
 pub struct Builder {
     config: zenoh::Config,
-    queryable_key_values: Vec<(String, String)>,
+    storage: HashMap<KeyExpr, Storage>,
 }
 
 impl Builder {
     fn new() -> Self {
         Builder {
             config: zenoh::Config::default(),
-            queryable_key_values: Vec::new(),
+            storage: HashMap::new(),
         }
     }
 
-    pub fn with_queryable_key_value(mut self, key: &str, value: &str) -> Self {
-        self.queryable_key_values
-            .push((key.to_string(), value.to_string()));
+    pub fn add_storage(mut self, prefix: impl Into<String>, storage: Storage) -> Self {
+        let prefix = prefix.into();
+        assert!(!prefix.contains("*"), "prefix must not have wildcards");
+        assert!(
+            !prefix.ends_with("/"),
+            "prefix must not have trailing slashes"
+        );
+        self.storage.insert(prefix, storage);
         self
     }
 
     pub fn start(self) -> Session {
-        let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
 
         let session = runtime.block_on(async {
-            let session = zenoh::open(self.config).await.unwrap();
+            let session = Arc::new(zenoh::open(self.config).await.unwrap());
 
-            for (key, value) in self.queryable_key_values {
-                let queryable = session.declare_queryable(key.clone()).await.unwrap();
+            for (prefix, storage) in self.storage {
+                let session = session.clone();
                 runtime.spawn(async move {
-                    while let Ok(query) = queryable.recv_async().await {
-                        query.reply(key.clone(), value.clone()).await.unwrap();
-                    }
+                    storage.clone().handle(prefix, session).await;
                 });
             }
 
@@ -47,13 +63,80 @@ impl Builder {
 
         std::thread::sleep(Duration::from_secs(1));
 
-        Session {
-            _runtime: runtime,
-            _session: session,
-        }
+        Session { runtime, session }
     }
 }
 
 pub fn builder() -> Builder {
     Builder::new()
+}
+
+#[derive(Clone)]
+pub struct Storage(Arc<Mutex<HashMap<String, ZBytes>>>);
+
+impl Storage {
+    pub fn empty() -> Self {
+        Storage(Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    pub fn with_entries(entries: &[(&str, &str)]) -> Self {
+        Storage(Arc::new(Mutex::new(
+            entries
+                .iter()
+                .map(|(k, v)| (k.to_string(), ZBytes::from(v.as_bytes())))
+                .collect(),
+        )))
+    }
+
+    async fn handle(&self, prefix: String, session: Arc<zenoh::Session>) {
+        let prefix = format!("{prefix}/");
+        let prefix_with_wildcard = format!("{prefix}**");
+        let subscriber = session
+            .declare_subscriber(prefix_with_wildcard.clone())
+            .await
+            .unwrap();
+        let queryable = session
+            .declare_queryable(prefix_with_wildcard.clone())
+            .await
+            .unwrap();
+
+        loop {
+            if session.is_closed() {
+                break;
+            }
+            tokio::select! {
+                sample = subscriber.recv_async() => {
+                    if let Ok(sample) = sample {
+                        self.handle_sample(&prefix, sample).await;
+                    }
+                },
+                query = queryable.recv_async() => {
+                    if let Ok(query) = query {
+                        self.handle_query(&prefix, query).await;
+                    }
+                }
+            }
+        }
+    }
+
+    async fn handle_sample(&self, prefix: &str, sample: zenoh::sample::Sample) {
+        let mut storage = self.0.lock().await;
+        let key = sample.key_expr().trim_start_matches(prefix).to_string();
+        match sample.kind() {
+            zenoh::sample::SampleKind::Put => {
+                storage.insert(key, sample.payload().to_owned());
+            }
+            zenoh::sample::SampleKind::Delete => {
+                let _ = storage.remove(&key);
+            }
+        }
+    }
+
+    async fn handle_query(&self, prefix: &str, query: zenoh::query::Query) {
+        let storage = self.0.lock().await;
+        let key = query.key_expr().trim_start_matches(prefix).to_string();
+        if let Some(value) = storage.get(&key).cloned() {
+            query.reply(query.key_expr(), value).await.unwrap();
+        }
+    }
 }
