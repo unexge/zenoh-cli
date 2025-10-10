@@ -112,8 +112,8 @@ impl Builder {
             .insert_json5(
                 "scouting",
                 r#"{
-    "gossip": {
-        "enabled": true,
+    "multicast": {
+        "enabled": false,
     },
 }"#,
             )
