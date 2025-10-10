@@ -141,7 +141,7 @@ pub async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<(
             }
         }
         cmd => {
-            if cmd == "" {
+            if cmd.is_empty() {
                 bail!("missing command");
             }
             bail!("unknown command: {cmd}");

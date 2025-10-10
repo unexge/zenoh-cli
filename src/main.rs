@@ -24,10 +24,10 @@ async fn main() -> Result<()> {
 
     tokio::runtime::Handle::current()
         .spawn_blocking(async move || {
-            if args.len() > 0 {
-                ui::handle(&tx, args.join(" ").to_string()).await
-            } else {
+            if args.is_empty() {
                 ui::start(tx).await
+            } else {
+                ui::handle(&tx, args.join(" ").to_string()).await
             }
         })
         .await?
