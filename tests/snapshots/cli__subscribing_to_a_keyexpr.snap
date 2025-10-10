@@ -1,0 +1,9 @@
+---
+source: tests/cli.rs
+expression: "format!(\"----- stdout -----\\n{}\\n----- stderr -----\\n{}\", stdout_buf,\nstderr_buf,)"
+---
+----- stdout -----
+test/foo: bar
+test/baz: qux
+
+----- stderr -----

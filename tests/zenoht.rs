@@ -3,6 +3,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 use insta_cmd::get_cargo_bin;
 use port_check::free_local_port;
@@ -32,6 +33,35 @@ impl Session {
         let mut cmd = Command::new(get_cargo_bin("zenoh-cli"));
         cmd.env("ZENOH_CONFIG", self.config_path.to_owned());
         cmd
+    }
+
+    pub fn wait_for_peer(&self) {
+        let _guard = self.runtime.enter();
+        let fut = tokio::time::timeout(Duration::from_secs(5), async {
+            let info = self.session.info();
+
+            loop {
+                let mut peers = info.peers_zid().await;
+                if peers.next().is_some() {
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        });
+
+        self.block_on(fut).expect("failed to wait for peer");
+    }
+
+    pub fn block_on<F: Future>(&self, future: F) -> F::Output {
+        self.runtime.block_on(future)
+    }
+
+    pub fn put(&self, key: &str, payload: &str) {
+        let key = key.to_string();
+        let payload = ZBytes::from(payload);
+        self.block_on(async move { self.session.put(key, payload).await })
+            .expect("failed to put key");
     }
 }
 
@@ -64,8 +94,8 @@ impl Builder {
 
         let mut cli_config = zenoh::Config::default();
         cli_config
-            .insert_json5("mode", r#""client""#)
-            .expect("failed to set client mode");
+            .insert_json5("mode", r#""peer""#)
+            .expect("failed to set peer mode");
         cli_config
             .insert_json5(
                 "connect",
@@ -159,6 +189,10 @@ impl Storage {
                 .map(|(k, v)| (k.to_string(), ZBytes::from(v.as_bytes())))
                 .collect(),
         )))
+    }
+
+    pub async fn get(&self, key: &str) -> Option<ZBytes> {
+        self.0.lock().await.get(key).cloned()
     }
 
     async fn handle(&self, prefix: String, session: Arc<zenoh::Session>) {
