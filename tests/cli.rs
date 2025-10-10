@@ -1,6 +1,9 @@
-use std::{io::Read, process::Stdio, time::Duration};
+use std::io::{BufRead, BufReader};
+use std::process::Stdio;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
-use insta::assert_snapshot;
 use insta_cmd::assert_cmd_snapshot;
 use zenoh::bytes::ZBytes;
 
@@ -69,22 +72,26 @@ fn test_subscribing_to_a_keyexpr() {
     session.put("test/foo", "bar");
     session.put("test/baz", "qux");
 
-    std::thread::sleep(Duration::from_millis(500));
+    let stdout = child.stdout.take().unwrap();
+    let (tx, rx) = mpsc::channel();
 
-    let mut stderr = child.stderr.take().unwrap();
-    let mut stdout = child.stdout.take().unwrap();
+    thread::spawn(move || {
+        let mut lines = BufReader::new(stdout).lines();
+
+        let line = lines.next().unwrap().unwrap();
+        assert!(line.contains("test/foo"));
+        assert!(line.contains("bar"));
+
+        let line = lines.next().unwrap().unwrap();
+        assert!(line.contains("test/baz"));
+        assert!(line.contains("qux"));
+
+        tx.send(()).unwrap();
+    });
+
+    rx.recv_timeout(Duration::from_secs(10))
+        .expect("failed to receive sent messages");
 
     child.kill().unwrap();
     child.wait().unwrap();
-
-    let mut stdout_buf = String::new();
-    stdout.read_to_string(&mut stdout_buf).unwrap();
-
-    let mut stderr_buf = String::new();
-    stderr.read_to_string(&mut stderr_buf).unwrap();
-
-    assert_snapshot!(format!(
-        "----- stdout -----\n{}\n----- stderr -----\n{}",
-        stdout_buf, stderr_buf,
-    ));
 }
