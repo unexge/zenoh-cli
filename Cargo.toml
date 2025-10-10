@@ -13,3 +13,7 @@ colored = "3"
 [dev-dependencies]
 insta = "1.43.1"
 insta-cmd = "0.6.0"
+tempdir = "0.3.7"
+port_check = "0.3.0"
+serde = "1.0.228"
+serde_json5 = "0.2.1"

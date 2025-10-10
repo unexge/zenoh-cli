@@ -1,5 +1,12 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::collections::HashMap;
+use std::fs::File;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Arc;
 
+use insta_cmd::get_cargo_bin;
+use port_check::free_local_port;
+use tempdir::TempDir;
 use tokio::sync::Mutex;
 use zenoh::bytes::ZBytes;
 
@@ -8,6 +15,8 @@ pub type KeyExpr = String;
 pub struct Session {
     runtime: tokio::runtime::Runtime,
     session: Arc<zenoh::Session>,
+    config_path: PathBuf,
+    _temp_dir: TempDir,
 }
 
 impl Drop for Session {
@@ -18,15 +27,71 @@ impl Drop for Session {
     }
 }
 
+impl Session {
+    pub fn cli(&self) -> Command {
+        let mut cmd = Command::new(get_cargo_bin("zenoh-cli"));
+        cmd.env("ZENOH_CONFIG", self.config_path.to_owned());
+        cmd
+    }
+}
+
 pub struct Builder {
     config: zenoh::Config,
+    cli_config: zenoh::Config,
     storage: HashMap<KeyExpr, Storage>,
 }
 
 impl Builder {
     fn new() -> Self {
+        let port = free_local_port().expect("failed to get a free port");
+
+        let mut config = zenoh::Config::default();
+        config
+            .insert_json5("mode", r#""router""#)
+            .expect("failed to set router mode");
+        config
+            .insert_json5(
+                "listen",
+                &format!(
+                    r#"{{
+            "endpoints": [
+                "tcp/127.0.0.1:{port}"
+            ]
+        }}"#,
+                ),
+            )
+            .expect("failed to set listen config");
+
+        let mut cli_config = zenoh::Config::default();
+        cli_config
+            .insert_json5("mode", r#""client""#)
+            .expect("failed to set client mode");
+        cli_config
+            .insert_json5(
+                "connect",
+                &format!(
+                    r#"{{
+    "endpoints": [
+        "tcp/127.0.0.1:{port}"
+    ]
+}}"#
+                ),
+            )
+            .expect("failed to set connect config");
+        cli_config
+            .insert_json5(
+                "scouting",
+                r#"{
+    "gossip": {
+        "enabled": true,
+    },
+}"#,
+            )
+            .expect("failed to set scouting config");
+
         Builder {
-            config: zenoh::Config::default(),
+            config,
+            cli_config,
             storage: HashMap::new(),
         }
     }
@@ -43,6 +108,11 @@ impl Builder {
     }
 
     pub fn start(self) -> Session {
+        let temp_dir = TempDir::new("zenoht").expect("failed to create tempdir");
+        let config_path = temp_dir.path().join("zenoh-conf.json5");
+        let mut config_file = File::create(&config_path).expect("failed to create config file");
+        serde_json5::to_writer(&mut config_file, &self.cli_config).expect("failed to write config");
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -61,9 +131,12 @@ impl Builder {
             session
         });
 
-        std::thread::sleep(Duration::from_secs(1));
-
-        Session { runtime, session }
+        Session {
+            runtime,
+            session,
+            config_path,
+            _temp_dir: temp_dir,
+        }
     }
 }
 
