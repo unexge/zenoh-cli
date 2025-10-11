@@ -140,6 +140,24 @@ pub async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<(
                 }
             }
         }
+        "zid" => {
+            let (tx, mut rx) = mpsc::channel(1);
+            if let Err(err) = commands.send(Command::Zid { reply: tx }).await {
+                bail!("failed to send command: {err}");
+            }
+
+            match rx.recv().await {
+                Some(Ok(zid)) => {
+                    println!("{zid}")
+                }
+                Some(Err(err)) => {
+                    bail!(err);
+                }
+                None => {
+                    bail!("failed to get zid");
+                }
+            }
+        }
         cmd => {
             if cmd.is_empty() {
                 bail!("missing command");

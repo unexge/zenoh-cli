@@ -95,3 +95,12 @@ fn test_subscribing_to_a_keyexpr() {
     child.kill().unwrap();
     child.wait().unwrap();
 }
+
+#[test]
+fn test_getting_zid() {
+    let session = zenoht::builder()
+        .with_cli_config("id", r#""102030405060708090a0b0c0d0e0f10""#)
+        .start();
+
+    assert_cmd_snapshot!(session.cli().arg("zid"));
+}

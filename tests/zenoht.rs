@@ -137,6 +137,13 @@ impl Builder {
         self
     }
 
+    pub fn with_cli_config(mut self, key: &str, value: &str) -> Self {
+        self.cli_config
+            .insert_json5(key, value)
+            .expect("failed to set  config");
+        self
+    }
+
     pub fn start(self) -> Session {
         let temp_dir = TempDir::new("zenoht").expect("failed to create tempdir");
         let config_path = temp_dir.path().join("zenoh-conf.json5");

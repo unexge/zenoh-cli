@@ -26,6 +26,9 @@ pub enum Command {
         keyexpr: String,
         reply: mpsc::Sender<Result<KeyValue>>,
     },
+    Zid {
+        reply: mpsc::Sender<Result<String>>,
+    },
 }
 
 impl Command {
@@ -41,6 +44,9 @@ impl Command {
                 reply.send(Err(err)).await.expect("ui receiver is dropped");
             }
             Command::Subscribe { reply, .. } => {
+                reply.send(Err(err)).await.expect("ui receiver is dropped");
+            }
+            Command::Zid { reply, .. } => {
                 reply.send(Err(err)).await.expect("ui receiver is dropped");
             }
         }
@@ -125,6 +131,10 @@ async fn handle(session: &Session, cmd: &Command) -> Result<()> {
                     Err(_) => break,
                 }
             }
+        }
+        Command::Zid { reply } => {
+            let zid = session.zid().to_string();
+            reply.send(Ok(zid)).await?;
         }
     }
 
