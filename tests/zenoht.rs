@@ -66,7 +66,7 @@ impl Session {
 }
 
 pub struct Builder {
-    config: zenoh::Config,
+    router_config: zenoh::Config,
     cli_config: zenoh::Config,
     storage: HashMap<KeyExpr, Storage>,
 }
@@ -75,11 +75,11 @@ impl Builder {
     fn new() -> Self {
         let port = free_local_port().expect("failed to get a free port");
 
-        let mut config = zenoh::Config::default();
-        config
+        let mut router_config = zenoh::Config::default();
+        router_config
             .insert_json5("mode", r#""router""#)
             .expect("failed to set router mode");
-        config
+        router_config
             .insert_json5(
                 "listen",
                 &format!(
@@ -120,7 +120,7 @@ impl Builder {
             .expect("failed to set scouting config");
 
         Builder {
-            config,
+            router_config,
             cli_config,
             storage: HashMap::new(),
         }
@@ -140,7 +140,14 @@ impl Builder {
     pub fn with_cli_config(mut self, key: &str, value: &str) -> Self {
         self.cli_config
             .insert_json5(key, value)
-            .expect("failed to set  config");
+            .expect("failed to set cli config");
+        self
+    }
+
+    pub fn with_router_config(mut self, key: &str, value: &str) -> Self {
+        self.router_config
+            .insert_json5(key, value)
+            .expect("failed to set router config");
         self
     }
 
@@ -156,7 +163,7 @@ impl Builder {
             .unwrap();
 
         let session = runtime.block_on(async {
-            let session = Arc::new(zenoh::open(self.config).await.unwrap());
+            let session = Arc::new(zenoh::open(self.router_config).await.unwrap());
 
             for (prefix, storage) in self.storage {
                 let session = session.clone();

@@ -1,0 +1,15 @@
+---
+source: tests/cli.rs
+info:
+  program: zenoh-cli
+  args:
+    - peers
+  env:
+    ZENOH_CONFIG: /var/folders/ww/jw_c93dn6w7c1b3gb78lm_500000gn/T/zenoht.y54GNHY5UDLn/zenoh-conf.json5
+---
+success: true
+exit_code: 0
+----- stdout -----
+no peers found
+
+----- stderr -----

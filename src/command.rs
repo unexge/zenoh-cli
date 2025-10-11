@@ -29,6 +29,12 @@ pub enum Command {
     Zid {
         reply: mpsc::Sender<Result<String>>,
     },
+    Peers {
+        reply: mpsc::Sender<Result<String>>,
+    },
+    Routers {
+        reply: mpsc::Sender<Result<String>>,
+    },
 }
 
 impl Command {
@@ -47,6 +53,12 @@ impl Command {
                 reply.send(Err(err)).await.expect("ui receiver is dropped");
             }
             Command::Zid { reply, .. } => {
+                reply.send(Err(err)).await.expect("ui receiver is dropped");
+            }
+            Command::Peers { reply, .. } => {
+                reply.send(Err(err)).await.expect("ui receiver is dropped");
+            }
+            Command::Routers { reply, .. } => {
                 reply.send(Err(err)).await.expect("ui receiver is dropped");
             }
         }
@@ -135,6 +147,18 @@ async fn handle(session: &Session, cmd: &Command) -> Result<()> {
         Command::Zid { reply } => {
             let zid = session.zid().to_string();
             reply.send(Ok(zid)).await?;
+        }
+        Command::Peers { reply } => {
+            let mut peers = session.info().peers_zid().await;
+            while let Some(peer) = peers.next() {
+                reply.send(Ok(peer.to_string())).await?;
+            }
+        }
+        Command::Routers { reply } => {
+            let mut routers = session.info().routers_zid().await;
+            while let Some(router) = routers.next() {
+                reply.send(Ok(router.to_string())).await?;
+            }
         }
     }
 

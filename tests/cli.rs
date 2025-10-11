@@ -104,3 +104,21 @@ fn test_getting_zid() {
 
     assert_cmd_snapshot!(session.cli().arg("zid"));
 }
+
+#[test]
+fn test_getting_peers() {
+    let session = zenoht::builder()
+        .with_router_config("id", r#""202030405060708090a0b0c0d0e0f10""#)
+        .start();
+
+    assert_cmd_snapshot!(session.cli().arg("peers"));
+}
+
+#[test]
+fn test_getting_routers() {
+    let session = zenoht::builder()
+        .with_router_config("id", r#""202030405060708090a0b0c0d0e0f10""#)
+        .start();
+
+    assert_cmd_snapshot!(session.cli().arg("routers"));
+}

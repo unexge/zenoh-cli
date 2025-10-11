@@ -158,6 +158,36 @@ pub async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<(
                 }
             }
         }
+        "peers" => {
+            let (tx, mut rx) = mpsc::channel(8);
+            if let Err(err) = commands.send(Command::Peers { reply: tx }).await {
+                bail!("failed to send command: {err}");
+            }
+
+            let mut num_replies = 0;
+            while let Some(res) = rx.recv().await {
+                println!("{}", res?);
+                num_replies += 1;
+            }
+            if num_replies == 0 {
+                println!("{}", "no peers found".bright_black());
+            }
+        }
+        "routers" => {
+            let (tx, mut rx) = mpsc::channel(8);
+            if let Err(err) = commands.send(Command::Routers { reply: tx }).await {
+                bail!("failed to send command: {err}");
+            }
+
+            let mut num_replies = 0;
+            while let Some(res) = rx.recv().await {
+                println!("{}", res?);
+                num_replies += 1;
+            }
+            if num_replies == 0 {
+                println!("{}", "no routers found".bright_black());
+            }
+        }
         cmd => {
             if cmd.is_empty() {
                 bail!("missing command");

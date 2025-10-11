@@ -1,0 +1,15 @@
+---
+source: tests/cli.rs
+info:
+  program: zenoh-cli
+  args:
+    - routers
+  env:
+    ZENOH_CONFIG: /var/folders/ww/jw_c93dn6w7c1b3gb78lm_500000gn/T/zenoht.mabfdXzTDiid/zenoh-conf.json5
+---
+success: true
+exit_code: 0
+----- stdout -----
+202030405060708090a0b0c0d0e0f10
+
+----- stderr -----
