@@ -1,6 +1,17 @@
+use std::borrow::Cow;
+
 use anyhow::{Result, bail};
 use colored::Colorize;
-use rustyline::{Config, DefaultEditor, error::ReadlineError};
+use rustyline::{
+    Changeset, Config, Context, Editor, Helper,
+    completion::{Completer, Pair},
+    error::ReadlineError,
+    highlight::Highlighter,
+    hint::Hinter,
+    history::DefaultHistory,
+    line_buffer::LineBuffer,
+    validate::Validator,
+};
 use tokio::signal;
 use tokio::sync::mpsc;
 
@@ -10,7 +21,9 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub async fn start(commands: mpsc::Sender<Command>) -> Result<()> {
     println!("Zenoh CLI v{VERSION}");
-    let mut rl = DefaultEditor::with_config(Config::builder().auto_add_history(true).build())?;
+    let mut rl: Editor<ZenohHelper, DefaultHistory> =
+        Editor::with_config(Config::builder().auto_add_history(true).build())?;
+    rl.set_helper(Some(ZenohHelper {}));
 
     for input in rl.iter("> ") {
         let input = match input {
@@ -200,6 +213,103 @@ pub async fn handle(commands: &mpsc::Sender<Command>, input: String) -> Result<(
     }
 
     Ok(())
+}
+
+struct ZenohHelper;
+
+impl ZenohHelper {
+    const COMMANDS: [&str; 8] = [
+        "quit",
+        "get",
+        "put",
+        "delete",
+        "subscribe",
+        "zid",
+        "peers",
+        "routers",
+    ];
+}
+
+impl Helper for ZenohHelper {}
+
+impl Validator for ZenohHelper {}
+
+impl Highlighter for ZenohHelper {
+    fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
+        if line.is_empty() {
+            return Cow::Borrowed(line);
+        }
+
+        let (cmd, args) = match line.split_once(' ') {
+            Some((cmd, args)) => (cmd, args),
+            None => (line, ""),
+        };
+
+        if !ZenohHelper::COMMANDS.contains(&cmd) {
+            return Cow::Borrowed(line);
+        }
+
+        let new_line = format!("{} {}", cmd.bold(), args);
+        if args.is_empty() {
+            Cow::Owned(new_line.trim().to_string())
+        } else {
+            Cow::Owned(new_line)
+        }
+    }
+
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(&'s self, prompt: &'p str, _: bool) -> Cow<'b, str> {
+        Cow::Owned(prompt.bold().to_string())
+    }
+
+    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+        Cow::Owned(hint.bright_black().to_string())
+    }
+}
+
+impl Hinter for ZenohHelper {
+    type Hint = String;
+
+    fn hint(&self, line: &str, _: usize, _: &Context<'_>) -> Option<Self::Hint> {
+        if line.is_empty() {
+            return None;
+        }
+
+        ZenohHelper::COMMANDS
+            .iter()
+            .find_map(|cmd| cmd.strip_prefix(line))
+            .map(str::to_string)
+    }
+}
+
+impl Completer for ZenohHelper {
+    type Candidate = Pair;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _: &Context<'_>,
+    ) -> Result<(usize, Vec<Self::Candidate>), ReadlineError> {
+        let curr = &line[0..pos];
+        let candidates = ZenohHelper::COMMANDS
+            .iter()
+            .filter(|cmd| cmd.starts_with(curr))
+            .map(|cmd| Pair {
+                replacement: std::iter::once(*cmd)
+                    .chain(line.split(" ").skip(1))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                display: cmd.to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        Ok((0, candidates))
+    }
+
+    fn update(&self, line: &mut LineBuffer, start: usize, elected: &str, cl: &mut Changeset) {
+        assert_eq!(start, 0);
+        line.update(elected, elected.len(), cl);
+    }
 }
 
 fn print_key_value((keyexpr, value): KeyValue) {
