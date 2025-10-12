@@ -22,15 +22,14 @@ async fn main() -> Result<()> {
 
     let tx = command::start_handler(session);
 
-    tokio::runtime::Handle::current()
-        .spawn_blocking(async move || {
-            if args.is_empty() {
-                ui::start(tx).await
-            } else {
-                ui::handle(&tx, args.join(" ").to_string()).await
-            }
-        })
-        .await?
-        .await?;
+    tokio::task::spawn_blocking(async move || {
+        if args.is_empty() {
+            ui::start(tx).await
+        } else {
+            ui::handle(&tx, args.join(" ").to_string()).await
+        }
+    })
+    .await?
+    .await?;
     Ok(())
 }

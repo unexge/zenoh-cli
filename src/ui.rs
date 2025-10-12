@@ -6,7 +6,10 @@ use tokio::sync::mpsc;
 
 use super::command::{Command, KeyValue};
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub async fn start(commands: mpsc::Sender<Command>) -> Result<()> {
+    println!("Zenoh CLI v{VERSION}");
     let mut rl = DefaultEditor::with_config(Config::builder().auto_add_history(true).build())?;
 
     for input in rl.iter("> ") {
